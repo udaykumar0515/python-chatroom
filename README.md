@@ -79,9 +79,7 @@ Inside the client:
 
 ---
 
-Here’s your **cleaned-up and safe README section** with the updated instructions using the `echo` command directly:
 
-````markdown
 ## 🔑 Encryption Key Setup
 
 This chatroom uses **Fernet (AES + HMAC)** for encrypting all messages and files.  
@@ -129,34 +127,6 @@ Save the generated key into a hidden file in your home directory:
 * Do **not commit** it to GitHub (already covered by `.gitignore`).
 * If the key is leaked, **anyone can decrypt all chat messages and files**.
 
-```
-
----
-
-
-### 3. Code Behavior
-
-The client/server automatically load the key from this file:
-
-```python
-# Load Fernet key from a local file that's gitignored for security
-FERNET_KEY_PATH = os.path.expanduser("~/.chat_fernet.key")
-if not os.path.exists(FERNET_KEY_PATH):
-    print(f"Fernet key file not found at {FERNET_KEY_PATH}. Please create it with your key (single line, base64).")
-    sys.exit(1)
-with open(FERNET_KEY_PATH, "rb") as f:
-    FERNET_KEY = f.read().strip()
-```
-
-If the file is missing, the program will exit with an error message.
-
----
-
-### 4. Keep It Secure
-
-* **Do not share your `.chat_fernet.key` file** publicly.
-* **Do not commit it to GitHub**.
-* If the key is leaked, **anyone can decrypt all chat messages and files**.
 
 ---
 
