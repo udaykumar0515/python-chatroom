@@ -29,7 +29,6 @@ This was developed as a **course-end project for Computer Networks**.
 ## 📂 Project Structure
 ```
 
-│
 ├── server.py   # Starts the server, manages clients, relays messages/files
 ├── client.py   # Connects to server, sends/receives encrypted messages & files
 └── README.md   # Project documentation
