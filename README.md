@@ -105,17 +105,10 @@ You’ll see output like:
 
 Save the generated key into a hidden file in your home directory:
 
-* **Linux / macOS:**
+```bash
+echo "<YOUR_GENERATED_KEY_HERE>" > ~/.chat_fernet.key
+```
 
-  ```bash
-  echo "<YOUR_GENERATED_KEY_HERE>" > ~/.chat_fernet.key
-  ```
-
-* **Windows (PowerShell):**
-
-  ```powershell
-  echo "<YOUR_GENERATED_KEY_HERE>" | Out-File -Encoding ascii -FilePath $env:USERPROFILE\.chat_fernet.key
-  ```
 
 👉 The file must contain **only the key on a single line** (no spaces or extra lines).
 
