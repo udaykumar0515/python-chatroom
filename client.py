@@ -16,7 +16,13 @@ from cryptography.fernet import Fernet
 # Constants
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 5000
-FERNET_KEY = b'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg='
+# Load Fernet key from a local file that's gitignored for security
+FERNET_KEY_PATH = os.path.expanduser("~/.chat_fernet.key")
+if not os.path.exists(FERNET_KEY_PATH):
+    print(f"Fernet key file not found at {FERNET_KEY_PATH}. Please create it with your key (single line, base64).")
+    sys.exit(1)
+with open(FERNET_KEY_PATH, "rb") as f:
+    FERNET_KEY = f.read().strip()
 CHUNK_SIZE = 4096
 
 def read_exact(sock: socket.socket, n: int) -> bytes:
