@@ -22,19 +22,33 @@ FERNET_KEY = b'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg='
 clients = {}
 lock = Lock()
 
-CHAT_HISTORY_DIR = "chat_history"
+CHAT_HISTORY_FILE = "chat_history.json"
 
 def init_directories():
-    os.makedirs(CHAT_HISTORY_DIR, exist_ok=True)
+    pass
 
 def save_message(from_user: str, to_user: str, message: str):
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = {"timestamp": timestamp, "from": from_user, "to": to_user, "message": message}
         
-        file_path = os.path.join(CHAT_HISTORY_DIR, "chat_history.json")
-        with open(file_path, "a") as f:
-            f.write(json.dumps(log_entry) + "\n")
+        # Load existing messages
+        messages = []
+        if os.path.exists(CHAT_HISTORY_FILE):
+            try:
+                with open(CHAT_HISTORY_FILE, "r") as f:
+                    content = f.read().strip()
+                    if content:
+                        messages = json.loads(content)
+            except:
+                messages = []
+        
+        # Add new message
+        messages.append(log_entry)
+        
+        # Save back to file
+        with open(CHAT_HISTORY_FILE, "w") as f:
+            json.dump(messages, f, indent=2)
     except:
         pass
 
@@ -209,14 +223,13 @@ def handle_client(client_socket, client_addr):
                 with lock:
                     if username in clients and clients[username]["is_admin"]:
                         try:
-                            history_file = os.path.join(CHAT_HISTORY_DIR, "chat_history.json")
-                            if os.path.exists(history_file):
-                                with open(history_file, "r") as f:
-                                    lines = f.readlines()
-                                    recent_messages = lines[-50:] if len(lines) > 50 else lines
+                            if os.path.exists(CHAT_HISTORY_FILE):
+                                with open(CHAT_HISTORY_FILE, "r") as f:
+                                    messages = json.load(f)
+                                    recent_messages = messages[-50:] if len(messages) > 50 else messages
                                 send_framed(client_socket, {
                                     "type": "admin_history_response",
-                                    "messages": [json.loads(line.strip()) for line in recent_messages if line.strip()]
+                                    "messages": recent_messages
                                 })
                             else:
                                 send_framed(client_socket, {"type": "admin_history_response", "messages": []})
