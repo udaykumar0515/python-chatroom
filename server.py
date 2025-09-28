@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Encrypted Terminal Chat Server - Enhanced Version
 Usage: python server.py
@@ -10,10 +9,9 @@ import json
 import base64
 import struct
 import time
-import typing
 import os
-import sys
 from threading import Lock
+from datetime import datetime
 
 # Constants
 HOST = "0.0.0.0"  # Bind to all interfaces
@@ -21,85 +19,63 @@ PORT = 5000
 RECV_BUF = 4096
 FERNET_KEY = b'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg='
 
-# Global state - Enhanced to store client objects with admin info
-clients: typing.Dict[str, dict] = {}  # username -> {"conn": socket, "addr": addr, "is_admin": bool}
+clients = {}
 lock = Lock()
 
-def read_exact(sock: socket.socket, n: int) -> bytes:
-    """Read exactly n bytes from socket or raise on disconnect."""
+CHAT_HISTORY_DIR = "chat_history"
+
+def init_directories():
+    os.makedirs(CHAT_HISTORY_DIR, exist_ok=True)
+
+def save_message(from_user: str, to_user: str, message: str):
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = {"timestamp": timestamp, "from": from_user, "to": to_user, "message": message}
+        
+        file_path = os.path.join(CHAT_HISTORY_DIR, "chat_history.json")
+        with open(file_path, "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+    except:
+        pass
+
+
+def read_exact(sock, n):
     data = b''
     while len(data) < n:
         chunk = sock.recv(n - len(data))
         if not chunk:
-            raise ConnectionError("Socket closed during read")
+            raise ConnectionError("Socket closed")
         data += chunk
     return data
 
-def recv_message(sock: socket.socket) -> typing.Tuple[dict, typing.Optional[bytes]]:
-    """Receive framed message: metadata + optional payload."""
-    # Read metadata length
-    meta_len_bytes = read_exact(sock, 4)
-    meta_len = struct.unpack('!I', meta_len_bytes)[0]
-
-    # Read metadata JSON
-    meta_bytes = read_exact(sock, meta_len)
-    metadata = json.loads(meta_bytes.decode('utf-8'))
-
-    # Read payload if specified
-    payload = None
-    if 'payload_len' in metadata and metadata['payload_len'] > 0:
-        payload = read_exact(sock, metadata['payload_len'])
-
+def recv_message(sock):
+    meta_len = struct.unpack('!I', read_exact(sock, 4))[0]
+    metadata = json.loads(read_exact(sock, meta_len).decode('utf-8'))
+    payload = read_exact(sock, metadata['payload_len']) if metadata.get('payload_len', 0) > 0 else None
     return metadata, payload
 
-def send_framed(sock: socket.socket, metadata: dict, payload: typing.Optional[bytes] = None):
-    """Send framed message: metadata + optional payload."""
-    # Set payload length in metadata
-    if payload:
-        metadata['payload_len'] = len(payload)
-    else:
-        metadata['payload_len'] = 0
-
-    # Serialize metadata
-    meta_json = json.dumps(metadata)
-    meta_bytes = meta_json.encode('utf-8')
-
-    # Send metadata length and metadata
+def send_framed(sock, metadata, payload=None):
+    metadata['payload_len'] = len(payload) if payload else 0
+    meta_bytes = json.dumps(metadata).encode('utf-8')
     sock.sendall(struct.pack('!I', len(meta_bytes)))
     sock.sendall(meta_bytes)
-
-    # Send payload if present
     if payload:
         sock.sendall(payload)
 
 def broadcast_user_list():
-    """Send updated user list to all connected clients."""
     with lock:
         usernames = list(clients.keys())
-
-    list_response = {
-        "type": "list_response",
-        "users": usernames
-    }
-
+    list_response = {"type": "list_response", "users": usernames}
     with lock:
-        for username, client_info in clients.items():
+        for client_info in clients.values():
             try:
                 send_framed(client_info["conn"], list_response)
             except:
-                pass  # Client may be disconnecting
+                pass
 
-def broadcast_system_message(message: str, exclude_user: str = None):
-    """Broadcast a system message to all connected clients."""
-    system_meta = {
-        "type": "msg",
-        "from": "SYSTEM",
-        "to": "all"
-    }
-
-    # Create fake encrypted payload for system messages (they're not actually encrypted)
+def broadcast_system_message(message, exclude_user=None):
+    system_meta = {"type": "msg", "from": "SYSTEM", "to": "all"}
     system_payload = message.encode('utf-8')
-
     with lock:
         for username, client_info in clients.items():
             if exclude_user and username == exclude_user:
@@ -109,76 +85,44 @@ def broadcast_system_message(message: str, exclude_user: str = None):
             except:
                 pass
 
-def get_display_name(username: str) -> str:
-    """Get display name with admin tag if applicable."""
+def get_display_name(username):
     with lock:
-        if username in clients and clients[username]["is_admin"]:
-            return f"[ADMIN] {username}"
-        return username
+        return f"[ADMIN] {username}" if username in clients and clients[username]["is_admin"] else username
 
-def handle_client(client_socket: socket.socket, client_addr: tuple):
-    """Handle individual client connection."""
+def handle_client(client_socket, client_addr):
     username = None
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
     try:
-        # First message should be registration
         metadata, payload = recv_message(client_socket)
-
         if metadata.get('type') != 'register':
-            send_framed(client_socket, {
-                "type": "error", 
-                "error": "registration_required"
-            })
+            send_framed(client_socket, {"type": "error", "error": "registration_required"})
             return
 
         username = metadata.get('from', '').strip()
         if not username:
-            send_framed(client_socket, {
-                "type": "error", 
-                "error": "invalid_username"
-            })
+            send_framed(client_socket, {"type": "error", "error": "invalid_username"})
             return
 
-        # Check for duplicate username and assign admin status
         with lock:
             if username in clients:
-                send_framed(client_socket, {
-                    "type": "error", 
-                    "error": "username_taken"
-                })
+                send_framed(client_socket, {"type": "error", "error": "username_taken"})
                 return
-
-            # First client becomes admin
             is_admin = len(clients) == 0
-            clients[username] = {
-                "conn": client_socket,
-                "addr": f"{client_addr[0]}:{client_addr[1]}",
-                "is_admin": is_admin
-            }
+            clients[username] = {"conn": client_socket, "addr": f"{client_addr[0]}:{client_addr[1]}", "is_admin": is_admin}
 
         display_name = get_display_name(username)
         admin_tag = " (ADMIN)" if is_admin else ""
         print(f"[CONNECT] {timestamp} | {username} connected from {client_addr}{admin_tag}")
+        send_framed(client_socket, {"type": "register_success", "message": f"Registered as {username}{' with admin privileges' if is_admin else ''}", "is_admin": is_admin})
 
-        # Send success response
-        send_framed(client_socket, {
-            "type": "register_success",
-            "message": f"Registered as {username}{' with admin privileges' if is_admin else ''}"
-        })
-
-        # Broadcast updated user list
         broadcast_user_list()
-
-        # Announce new user to others
-        if not is_admin:  # Don't announce admin joining
+        if not is_admin:
             broadcast_system_message(f"{username} has joined the chat.", exclude_user=username)
 
-        # Main message handling loop
         while True:
             metadata, payload = recv_message(client_socket)
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-
             msg_type = metadata.get('type')
             from_user = metadata.get('from')
             display_from = get_display_name(from_user)
@@ -186,23 +130,29 @@ def handle_client(client_socket: socket.socket, client_addr: tuple):
             if msg_type == 'msg':
                 to_user = metadata.get('to')
                 print(f"[META] {timestamp} | type=msg | from={display_from} | to={to_user}")
-
+                
                 if payload:
-                    # Enhanced encrypted message logging
+                    # Show encrypted payload for educational purposes
                     payload_b64 = base64.b64encode(payload).decode('ascii')
                     print(f"[ENCRYPTED_PAYLOAD_BASE64] {payload_b64}")
-
-                    # New: Show encrypted message log in readable format
+                    
+                    # Show readable log format
                     if to_user == 'all':
                         print(f"[LOG] {display_from} → ALL: {payload_b64[:50]}{'...' if len(payload_b64) > 50 else ''}")
                     else:
                         target_display = get_display_name(to_user) if to_user in clients else to_user
                         print(f"[LOG] {display_from} → {target_display}: {payload_b64[:50]}{'...' if len(payload_b64) > 50 else ''}")
+                    
+                    try:
+                        from cryptography.fernet import Fernet
+                        fernet = Fernet(FERNET_KEY)
+                        decrypted_msg = fernet.decrypt(payload).decode('utf-8')
+                        save_message(from_user, to_user, decrypted_msg)
+                    except:
+                        pass
 
-                # Forward message
                 with lock:
                     if to_user == 'all':
-                        # Broadcast to all clients except sender
                         for target_user, client_info in clients.items():
                             if target_user != from_user:
                                 try:
@@ -210,26 +160,20 @@ def handle_client(client_socket: socket.socket, client_addr: tuple):
                                 except:
                                     pass
                     else:
-                        # Private message
                         if to_user in clients:
                             try:
                                 send_framed(clients[to_user]["conn"], metadata, payload)
                             except:
                                 pass
                         else:
-                            # Recipient not found
-                            send_framed(client_socket, {
-                                "type": "error",
-                                "error": "recipient_not_found"
-                            })
+                            send_framed(client_socket, {"type": "error", "error": "recipient_not_found"})
 
             elif msg_type == 'file_start':
                 to_user = metadata.get('to')
                 filename = metadata.get('filename', 'unknown')
                 filesize = metadata.get('filesize', 0)
                 print(f"[META] {timestamp} | type=file_start | from={display_from} | to={to_user} | filename={filename} | filesize={filesize}")
-
-                # Forward file_start to recipient
+                
                 with lock:
                     if to_user in clients:
                         try:
@@ -237,10 +181,7 @@ def handle_client(client_socket: socket.socket, client_addr: tuple):
                         except:
                             pass
                     else:
-                        send_framed(client_socket, {
-                            "type": "error",
-                            "error": "recipient_not_found"
-                        })
+                        send_framed(client_socket, {"type": "error", "error": "recipient_not_found"})
 
             elif msg_type == 'file_chunk':
                 to_user = metadata.get('to')
@@ -250,12 +191,10 @@ def handle_client(client_socket: socket.socket, client_addr: tuple):
                 if payload:
                     payload_b64 = base64.b64encode(payload).decode('ascii')
                     print(f"[ENCRYPTED_PAYLOAD_BASE64] {payload_b64}")
-
-                # Forward chunk to recipient
                 with lock:
                     if to_user in clients:
                         try:
-                            send_framed(clients[to_user]["conn"], metadata, payload)
+                            send_framed(clients[to_user]['conn'], metadata, payload)
                         except:
                             pass
 
@@ -263,10 +202,28 @@ def handle_client(client_socket: socket.socket, client_addr: tuple):
                 print(f"[META] {timestamp} | type=list_request | from={display_from}")
                 with lock:
                     usernames = list(clients.keys())
-                send_framed(client_socket, {
-                    "type": "list_response",
-                    "users": usernames
-                })
+                send_framed(client_socket, {"type": "list_response", "users": usernames})
+
+            elif msg_type == 'admin_history':
+                print(f"[META] {timestamp} | type=admin_history | from={display_from}")
+                with lock:
+                    if username in clients and clients[username]["is_admin"]:
+                        try:
+                            history_file = os.path.join(CHAT_HISTORY_DIR, "chat_history.json")
+                            if os.path.exists(history_file):
+                                with open(history_file, "r") as f:
+                                    lines = f.readlines()
+                                    recent_messages = lines[-50:] if len(lines) > 50 else lines
+                                send_framed(client_socket, {
+                                    "type": "admin_history_response",
+                                    "messages": [json.loads(line.strip()) for line in recent_messages if line.strip()]
+                                })
+                            else:
+                                send_framed(client_socket, {"type": "admin_history_response", "messages": []})
+                        except:
+                            send_framed(client_socket, {"type": "error", "error": "Failed to load history"})
+                    else:
+                        send_framed(client_socket, {"type": "error", "error": "admin_privileges_required"})
 
             else:
                 print(f"[META] {timestamp} | type=unknown | from={display_from}")
@@ -277,26 +234,21 @@ def handle_client(client_socket: socket.socket, client_addr: tuple):
         print(f"[DISCONNECT] {timestamp} | {display_name} disconnected: {e}")
 
     finally:
-        # Enhanced graceful disconnect handling
         if username:
             display_name = get_display_name(username)
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            print(f"[INFO] {display_name} disconnected")
-
+            print(f"[INFO] {timestamp} | {display_name} disconnected")
             with lock:
                 clients.pop(username, None)
-
-            # Broadcast disconnect message to remaining clients
             broadcast_system_message(f"{username} has left the chat.")
             broadcast_user_list()
-
         try:
             client_socket.close()
         except:
             pass
 
 def main():
-    """Main server function."""
+    init_directories()
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
@@ -306,16 +258,12 @@ def main():
         print(f"Server listening on {HOST}:{PORT}")
         print("Waiting for connections...")
         print("First client will become ADMIN")
+        print("Chat history and admin monitoring enabled")
         print("=" * 50)
 
         while True:
             client_socket, client_addr = server_socket.accept()
-            client_thread = threading.Thread(
-                target=handle_client, 
-                args=(client_socket, client_addr),
-                daemon=True
-            )
-            client_thread.start()
+            threading.Thread(target=handle_client, args=(client_socket, client_addr), daemon=True).start()
 
     except KeyboardInterrupt:
         print("\nServer shutting down...")
