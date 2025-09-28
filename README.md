@@ -3,7 +3,7 @@
 # Python Encrypted Chatroom
 
 A **terminal-based encrypted chatroom** built using Python sockets.
-It supports **multi-client messaging, private messages, file sharing with corruption detection, and encryption demonstration**.
+It supports **multi-client messaging, private messages, file sharing with corruption detection, chat history persistence, and admin monitoring**.
 
 This was developed as a **course-end project for Computer Networks**.
 
@@ -15,9 +15,11 @@ This was developed as a **course-end project for Computer Networks**.
 * **Broadcast chat** – send a message to everyone (`/all <msg>`).
 * **Private chat** – send direct messages (`/msg <user> <msg>`).
 * **File sharing** – transfer files securely with corruption detection.
+* **Chat history persistence** – all messages are saved to `chat_history.json`.
+* **Admin monitoring** – admin can view all private messages between users.
 * **Encryption demo** – all data is encrypted using Fernet (AES + HMAC); server logs show encrypted Base64 payloads.
 * **System notifications** – join/leave messages.
-* **Admin tag** – the first connected user is labeled `[ADMIN]` (for display only).
+* **Admin privileges** – first connected user becomes admin with special monitoring capabilities.
 
 ---
 
@@ -32,13 +34,12 @@ This was developed as a **course-end project for Computer Networks**.
 ## 📂 Project Structure
 
 ```
-
-├── server.py        # Starts the server, manages clients, relays messages/files
-├── client.py        # Connects to server, sends/receives encrypted messages & files
-├── README.md        # Project documentation
-├── .gitignore       # Ensures secret keys and temp files are not pushed
-└── (hidden) \~/.chat\_fernet.key   # Fernet encryption key (created by user, never committed)
-
+├── server.py           # Starts the server, manages clients, relays messages/files
+├── client.py           # Connects to server, sends/receives encrypted messages & files
+├── README.md           # Project documentation
+├── .gitignore          # Ensures secret keys and temp files are not pushed
+├── chat_history.json   # Chat history file (created at runtime, gitignored)
+└── chat_fernet.key     # Fernet encryption key (created at runtime, gitignored)
 ```
 
 ---
@@ -66,8 +67,7 @@ python client.py
 
 ## 💬 Commands
 
-Inside the client:
-
+### For All Users:
 ```
 /all <message>         → Broadcast to all users
 /msg <user> <message>  → Send private message
@@ -77,48 +77,28 @@ Inside the client:
 /help                  → Show help
 ```
 
+### For Admin Users Only:
+```
+/admin_history         → View all chat history (including private messages)
+```
+
 ---
 
 
 ## 🔑 Encryption Key Setup
 
 This chatroom uses **Fernet (AES + HMAC)** for encrypting all messages and files.  
-To keep the key secure, it is stored in a hidden file on your system instead of inside the code.
+The encryption key is automatically generated and stored in `chat_fernet.key` when you first run the application.
 
-### 1. Generate a Fernet Key
+### Automatic Key Generation
 
-Run this Python snippet once to generate a key:
+The key is automatically created when you start the server or client for the first time. No manual setup required!
 
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-````
+### Security Notes
 
-You’ll see output like:
-
-```
-<YOUR_GENERATED_KEY_HERE>
-```
-
----
-
-### 2. Create the Key File
-
-Save the generated key into a hidden file in your home directory:
-
-```bash
-echo "<YOUR_GENERATED_KEY_HERE>" > ~/.chat_fernet.key
-```
-
-
-👉 The file must contain **only the key on a single line** (no spaces or extra lines).
-
----
-
-### 3. Keep It Secure
-
-* Do **not share** your `.chat_fernet.key` file.
-* Do **not commit** it to GitHub (already covered by `.gitignore`).
-* If the key is leaked, **anyone can decrypt all chat messages and files**.
+* The `chat_fernet.key` file is automatically ignored by git (see `.gitignore`)
+* Do **not share** your `chat_fernet.key` file
+* If the key is leaked, **anyone can decrypt all chat messages and files**
 
 
 ---
@@ -131,6 +111,93 @@ echo "<YOUR_GENERATED_KEY_HERE>" > ~/.chat_fernet.key
 
 ---
 
+## 📺 Output Examples
+
+### Server Side Output
+
+When you run `python server.py`, you'll see detailed logs like this:
+
+```
+Server listening on 0.0.0.0:5000
+Waiting for connections...
+First client will become ADMIN
+Chat history and admin monitoring enabled
+==================================================
+[CONNECT] 2024-01-01 12:00:00 | alice connected from ('127.0.0.1', 12345) (ADMIN)
+[CONNECT] 2024-01-01 12:00:05 | bob connected from ('127.0.0.1', 12346)
+[META] 2024-01-01 12:00:10 | type=msg | from=[ADMIN] alice | to=all
+[ENCRYPTED_PAYLOAD_BASE64] gAAAAABh...
+[LOG] [ADMIN] alice → ALL: gAAAAABh...
+[META] 2024-01-01 12:00:15 | type=msg | from=bob | to=alice
+[ENCRYPTED_PAYLOAD_BASE64] gAAAAABi...
+[LOG] bob → [ADMIN] alice: gAAAAABi...
+[META] 2024-01-01 12:00:20 | type=file_start | from=[ADMIN] alice | to=bob | filename=test.txt | filesize=1024
+[META] 2024-01-01 12:00:21 | type=file_chunk | from=[ADMIN] alice | to=bob | seq=1 | last=false
+[ENCRYPTED_PAYLOAD_BASE64] gAAAAABj...
+[META] 2024-01-01 12:00:22 | type=admin_history | from=[ADMIN] alice
+[DISCONNECT] 2024-01-01 12:00:30 | bob disconnected: Connection lost
+[INFO] 2024-01-01 12:00:30 | bob disconnected
+```
+
+### Client Side Output
+
+When you run `python client.py`, you'll see:
+
+```
+Enter username (leave blank for default 'user'): alice
+Connecting to 127.0.0.1:5000...
+Connected to server
+Registered as alice with admin privileges
+🔑 You are now the chat administrator!
+Type /help for commands
+🔑 Admin commands: /admin_history
+
+/alice (ALL): Hello everyone!
+[bob] (PRIVATE): Hi alice, how are you?
+🔔 charlie has joined the chat.
+👥 Active users (3): alice, bob, charlie
+📥 Receiving file 'test.txt' from bob (1024 bytes)
+✅ [INFO] File 'test.txt' received successfully
+📁 Saved as: downloads/test.txt
+
+/admin_history
+
+🔍 === ADMIN CHAT HISTORY ===
+[2024-01-01 12:00:10] alice → ALL: Hello everyone!
+[2024-01-01 12:00:15] bob → alice: Hi alice, how are you?
+[2024-01-01 12:00:25] charlie → bob: Can you send me that file?
+=== END HISTORY ===
+```
+
+### Chat History File (`chat_history.json`)
+
+The server automatically saves all messages in a proper JSON format:
+
+```json
+[
+  {
+    "timestamp": "2024-01-01 12:00:10",
+    "from": "alice",
+    "to": "all",
+    "message": "Hello everyone!"
+  },
+  {
+    "timestamp": "2024-01-01 12:00:15",
+    "from": "bob",
+    "to": "alice",
+    "message": "Hi alice, how are you?"
+  },
+  {
+    "timestamp": "2024-01-01 12:00:25",
+    "from": "charlie",
+    "to": "bob",
+    "message": "Can you send me that file?"
+  }
+]
+```
+
+---
+
 ## 🎯 Learning Outcomes
 
 * TCP socket programming in Python
@@ -138,6 +205,9 @@ echo "<YOUR_GENERATED_KEY_HERE>" > ~/.chat_fernet.key
 * Secure communication with symmetric encryption
 * File transfer with error detection
 * System/user role handling
+* Data persistence and JSON file handling
+* Admin monitoring and chat history management
+* Real-time message logging and debugging
 
 ---
 
