@@ -9,15 +9,13 @@ This was developed as a **course-end project for Computer Networks**.
 
 ## 🚀 Features
 
-- **Multi-client chat** – many users can connect at once.
-- **Broadcast chat** – send a message to everyone (`/all <msg>`).
-- **Private chat** – send direct messages (`/msg <user> <msg>`).
-- **File sharing** – transfer files securely with corruption detection.
-- **Chat history persistence** – all messages are saved to `chat_history.json`.
-- **Admin monitoring** – admin can view all private messages between users.
-- **Encryption demo** – all data is encrypted using Fernet (AES + HMAC); server logs show encrypted Base64 payloads.
-- **System notifications** – join/leave messages.
-- **Admin privileges** – first connected user becomes admin with special monitoring capabilities.
+- **Secure Communication**: All messages and files are encrypted using Fernet (AES).
+- **Multi-Client Support**: Handles multiple users simultaneously with threading.
+- **Private & Broadcast Messaging**: Support for `/msg` (private) and `/all` (broadcast).
+- **Secure File Transfer**: Encrypted file sharing with integrity checks.
+- **Admin Dashboard**: The first user becomes Admin and can view all chat history.
+- **Persistent History**: Chats are saved to `chat_history.json`.
+- **Cross-Platform**: Works on any system with Python 3.
 
 ---
 
@@ -138,67 +136,30 @@ Here is how you can set up a secure chat with 3 friends (Alice, Bob, Charlie):
 
 ---
 
-## 📺 Output Examples
+### Server Output (Example)
 
-### Server Side Output
-
-When you run `python server.py`, you'll see detailed logs like this:
-
-```
+```text
 Server listening on 0.0.0.0:5000
-Waiting for connections...
 First client will become ADMIN
-Chat history and admin monitoring enabled
-==================================================
-[CONNECT] 2024-01-01 12:00:00 | alice connected from ('127.0.0.1', 12345) (ADMIN)
-[CONNECT] 2024-01-01 12:00:05 | bob connected from ('127.0.0.1', 12346)
-[META] 2024-01-01 12:00:10 | type=msg | from=[ADMIN] alice | to=all
-[ENCRYPTED_PAYLOAD_BASE64] gAAAAABh...
-[LOG] [ADMIN] alice → ALL: gAAAAABh...
-[META] 2024-01-01 12:00:15 | type=msg | from=bob | to=alice
-[ENCRYPTED_PAYLOAD_BASE64] gAAAAABi...
-[LOG] bob → [ADMIN] alice: gAAAAABi...
-[META] 2024-01-01 12:00:20 | type=file_start | from=[ADMIN] alice | to=bob | filename=test.txt | filesize=1024
-[META] 2024-01-01 12:00:21 | type=file_chunk | from=[ADMIN] alice | to=bob | seq=1 | last=false
-[ENCRYPTED_PAYLOAD_BASE64] gAAAAABj...
-[META] 2024-01-01 12:00:22 | type=admin_history | from=[ADMIN] alice
-[DISCONNECT] 2024-01-01 12:00:30 | bob disconnected: Connection lost
-[INFO] 2024-01-01 12:00:30 | bob disconnected
+[CONNECT] 2024-01-01 12:00:00 | alice connected (ADMIN)
+[META] type=msg | from=alice | to=all
+[ENCRYPTED] gAAAAABh... (Base64 payload)
+[LOG] alice → ALL: gAAAAABh...
 ```
 
-### Client Side Output
+### Client Output (Example)
 
-When you run `python client.py`, you'll see:
-
-```
-Enter username (leave blank for default 'user'): alice
-Connecting to 127.0.0.1:5000...
-Connected to server
+```text
 Registered as alice with admin privileges
 🔑 You are now the chat administrator!
-Type /help for commands
-🔑 Admin commands: /admin_history
 
 /alice (ALL): Hello everyone!
-[bob] (PRIVATE): Hi alice, how are you?
-🔔 charlie has joined the chat.
-👥 Active users (3): alice, bob, charlie
-📥 Receiving file 'test.txt' from bob (1024 bytes)
-✅ [INFO] File 'test.txt' received successfully
-📁 Saved as: downloads/test.txt
-
-/admin_history
-
-🔍 === ADMIN CHAT HISTORY ===
-[2024-01-01 12:00:10] alice → ALL: Hello everyone!
-[2024-01-01 12:00:15] bob → alice: Hi alice, how are you?
-[2024-01-01 12:00:25] charlie → bob: Can you send me that file?
-=== END HISTORY ===
+[bob] (PRIVATE): Hi alice!
+📥 Receiving file 'data.txt' from bob...
+✅ File 'data.txt' received successfully
 ```
 
-### Chat History File (`chat_history.json`)
-
-The server automatically saves all messages in a proper JSON format:
+### JSON History
 
 ```json
 [
@@ -207,18 +168,6 @@ The server automatically saves all messages in a proper JSON format:
     "from": "alice",
     "to": "all",
     "message": "Hello everyone!"
-  },
-  {
-    "timestamp": "2024-01-01 12:00:15",
-    "from": "bob",
-    "to": "alice",
-    "message": "Hi alice, how are you?"
-  },
-  {
-    "timestamp": "2024-01-01 12:00:25",
-    "from": "charlie",
-    "to": "bob",
-    "message": "Can you send me that file?"
   }
 ]
 ```
