@@ -17,7 +17,21 @@ from datetime import datetime
 HOST = "0.0.0.0"  # Bind to all interfaces
 PORT = 5000
 RECV_BUF = 4096
-FERNET_KEY = b'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg='
+FERNET_KEY_FILE = 'chat_fernet.key'
+FERNET_KEY = None  # Will be loaded dynamically
+
+def load_key():
+    global FERNET_KEY
+    if os.path.exists(FERNET_KEY_FILE):
+        with open(FERNET_KEY_FILE, 'rb') as f:
+            FERNET_KEY = f.read()
+    else:
+        from cryptography.fernet import Fernet
+        FERNET_KEY = Fernet.generate_key()
+        with open(FERNET_KEY_FILE, 'wb') as f:
+            f.write(FERNET_KEY)
+        print(f"Generated new encryption key: {FERNET_KEY_FILE}")
+
 
 clients = {}
 lock = Lock()
@@ -262,6 +276,7 @@ def handle_client(client_socket, client_addr):
 
 def main():
     init_directories()
+    load_key()  # Load or generate encryption key
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 

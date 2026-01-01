@@ -9,12 +9,27 @@ import threading
 import json
 import struct
 import os
-import base64
 from cryptography.fernet import Fernet
 
 SERVER_HOST = "127.0.0.1"
+
 SERVER_PORT = 5000
-FERNET_KEY = b'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg='
+SERVER_PORT = 5000
+FERNET_KEY_FILE = 'chat_fernet.key'
+FERNET_KEY = None  # Will be loaded dynamically
+
+def load_key():
+    global FERNET_KEY
+    if os.path.exists(FERNET_KEY_FILE):
+        with open(FERNET_KEY_FILE, 'rb') as f:
+            FERNET_KEY = f.read()
+    else:
+        print(f"❌ Error: Encryption key '{FERNET_KEY_FILE}' not found.")
+        print("   Please obtain the key file from the server administrator")
+        print("   and place it in the same directory as client.py.")
+        import sys
+        sys.exit(1)
+
 CHUNK_SIZE = 4096
 
 
@@ -199,7 +214,12 @@ def recv_loop(sock, username, fernet):
                 filepath = os.path.join('downloads', safe_filename)
                 try:
                     file_handle = open(filepath, 'wb')
-                    file_transfers[(from_user, filename)] = {'handle': file_handle, 'path': filepath, 'expected_size': filesize, 'received_size': 0}
+                    file_transfers[(from_user, filename)] = {
+                        'handle': file_handle,
+                        'path': filepath,
+                        'expected_size': filesize,
+                        'received_size': 0
+                    }
                     print(f"📥 Receiving file '{filename}' from {from_user} ({filesize} bytes)")
                 except Exception as e:
                     print(f"Error creating file '{filename}': {e}")
@@ -282,7 +302,10 @@ def main():
     username = input("Enter username (leave blank for default 'user'): ").strip()
     if not username:
         username = "user"
+
+    load_key()  # Load encryption key
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
 
     try:
         print(f"Connecting to {SERVER_HOST}:{SERVER_PORT}...")
