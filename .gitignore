@@ -18,3 +18,4 @@ docs/
 chat_fernet.key
 chat_history.json
 downloads/
+PROJECT_FULL_DOC.md
